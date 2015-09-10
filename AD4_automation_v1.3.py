@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+#Author: Phoenix Logan
 
 #usage: script.py  xtal_lig  recp
 
