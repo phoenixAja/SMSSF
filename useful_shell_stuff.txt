@@ -1,0 +1,4 @@
+
+#replace line for all files
+for i in *sub; do sed -i 's/Request_cpus = [0-9]/Request_cpus = TotalCpus/g' $i; done
+
