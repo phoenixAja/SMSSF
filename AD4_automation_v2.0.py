@@ -31,9 +31,6 @@ class Ligand(object):
         self.x_centroid = centroid.x
         self.y_centroid = centroid.y
         self.z_centroid = centroid.z
-
-    def get_atom_coords(self):
-            # get molecules coords
         self.atom_coord_x = []
         self.atom_coord_y = []
         self.atom_coord_z = []
@@ -43,21 +40,22 @@ class Ligand(object):
             self.atom_coord_x.append(pos.x)
             self.atom_coord_y.append(pos.y)
             self.atom_coord_z.append(pos.z)
-        return self.atom_coord_x, self.atom_coord_y, self.atom_coord_z
-
-    def calc_box(self, padding):
+        '''compute box center coordinates (vector) and box edge
+       lengths (vector). Use crystal ligand's centroid and
+       pad min max coords in each dimension for box dimensions'''
         padding = 4
         self.x_length = ( max(self.atom_coord_x) + padding) - (min(self.atom_coord_x) - padding )
         self.y_length = ( max(self.atom_coord_y) + padding) - (min(self.atom_coord_y) - padding )
         self.z_length = ( max(self.atom_coord_z) + padding) - (min(self.atom_coord_z) - padding )
-        return self.x_length, self.y_length, self.z_length
+        self.box_dim = (self.x_length, self.y_length, self.z_length)
+        self.box_center = (self.x_centroid, self.y_centroid, self.z_centroid)
+
 
 
 
 class Receptor(object):
     def __index__(self, atom_types):
         self.atom_types = atom_types
-
 
 targ_name = sys.argv[1]
 xtal_lig  = Ligand(sys.argv[2])
@@ -99,40 +97,6 @@ def extract_atom_types( ligand_file_list ):
         except TypeError:
             pass
     return new_types
-
-
-def dock_box( molfile ):
-    '''compute box center coordinates (vector) and box edge
-       lengths (vector). Use crystal ligand's centroid and
-       pad min max coords in each dimension for box dimensions'''
-    m = Chem.MolFromMol2File( molfile, sanitize = False )
-
-    # center coords
-    conf1 = m.GetConformer()
-    centroid = Chem.rdMolTransforms.ComputeCentroid(conf1)
-    x_center = centroid.x
-    y_center = centroid.y
-    z_center = centroid.z
-
-    # get molecules coords
-    atom_coord_x = []
-    atom_coord_y = []
-    atom_coord_z = []
-    for atom in m.GetAtoms():
-        atom_index = atom.GetIdx()
-        pos = conf1.GetAtomPosition(atom_index)
-        atom_coord_x.append(pos.x)
-        atom_coord_y.append(pos.y)
-        atom_coord_z.append(pos.z)
-    # calc box dimensions basd on min/max of xyz and pad with 5 angstroms
-    padding = 4
-    x_length = ( max(atom_coord_x) + padding) - (min(atom_coord_x) - padding )
-    y_length = ( max(atom_coord_y) + padding) - (min(atom_coord_y) - padding )
-    z_length = ( max(atom_coord_z) + padding) - (min(atom_coord_z) - padding )
-
-    box_center = (x_center, y_center, z_center)
-    box_dim = (x_length, y_length, z_length)
-    return box_center, box_dim
 
 
 def build_grids( gpf, atm_types_lst, receptor_type_lst, box_center, box_dim, recp ):
@@ -199,12 +163,10 @@ def write_AD4_config(mol_lig, pdbqt_lig, u_lst):
        str_maps += j
     try:
         # get centroid for ligand you want to dock, should be present as mol2 file
-        m = Chem.MolFromMol2File( mol_lig, sanitize = False)
-        conf1 = m.GetConformer()
-        centroid = Chem.rdMolTransforms.ComputeCentroid(conf1)
-        x_center = float(str(centroid.x)[:4])
-        y_center = float(str(centroid.y)[:4])
-        z_center = float(str(centroid.z)[:4])
+        Lig = Ligand(mol_lig)
+        x_center = float(str(Lig.x_centroid)[:4])
+        y_center = float(str(Lig.y_centroid)[:4])
+        z_center = float(str(Lig.z_centroid)[:4])
 
 
         config_file = open(pdbqt_lig[:len(pdbqt_lig)-6]+"_config_"+targ_name+".dpf","w")
@@ -289,7 +251,7 @@ def main():
     uniques = absolute_uniques()
     batch_write_configs(uniques)
     receptor_type_lst = extract_atom_types([recp])
-    box_center, box_dim = dock_box(xtal_lig)
+    box_center, box_dim = xtal_lig.box_centerm, xtal_lig.box_dim
     build_grids(gpf_name, uniques, receptor_type_lst, box_center, box_dim, recp)
 
 
