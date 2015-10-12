@@ -23,11 +23,36 @@ from pandas import DataFrame
 import glob
 
 class Ligand(object):
-    def __init__(self, xtal_name, x_centroid, y_centroid, z_centroid):
+    def __init__(self, xtal_name):
         self.xtal_name = xtal_name
-        self.x_centroid = x_centroid
-        self.y_centroid = y_centroid
-        self.z_centroid = z_centroid
+        self.mol2 = Chem.MolFromMol2File(self, sanitize = False )
+        self.conf1 = self.mol2.GetConformer
+        self.centroid = Chem.rdMolTransforms.ComputeCentroid(self.conf1)
+        self.x_centroid = centroid.x
+        self.y_centroid = centroid.y
+        self.z_centroid = centroid.z
+
+    def get_atom_coords(self):
+            # get molecules coords
+        self.atom_coord_x = []
+        self.atom_coord_y = []
+        self.atom_coord_z = []
+        for atom in self.mol2.GetAtoms():
+            atom_index = atom.GetIdx()
+            pos = conf1.GetAtomPosition(atom_index)
+            self.atom_coord_x.append(pos.x)
+            self.atom_coord_y.append(pos.y)
+            self.atom_coord_z.append(pos.z)
+        return self.atom_coord_x, self.atom_coord_y, self.atom_coord_z
+
+    def calc_box(self, padding):
+        padding = 4
+        self.x_length = ( max(self.atom_coord_x) + padding) - (min(self.atom_coord_x) - padding )
+        self.y_length = ( max(self.atom_coord_y) + padding) - (min(self.atom_coord_y) - padding )
+        self.z_length = ( max(self.atom_coord_z) + padding) - (min(self.atom_coord_z) - padding )
+        return self.x_length, self.y_length, self.z_length
+
+
 
 class Receptor(object):
     def __index__(self, atom_types):
@@ -35,8 +60,8 @@ class Receptor(object):
 
 
 targ_name = sys.argv[1]
-xtal_lig  = sys.argv[2]
-recp      = sys.argv[3]
+xtal_lig  = Ligand(sys.argv[2])
+recp      = Receptor(sys.argv[3])
 gpf_name  = "recp_"+targ_name+".gpf"
 
 def build_lig_file_list():
