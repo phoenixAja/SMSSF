@@ -251,7 +251,7 @@ def main():
     uniques = absolute_uniques()
     batch_write_configs(uniques)
     receptor_type_lst = extract_atom_types([recp])
-    box_center, box_dim = xtal_lig.box_centerm, xtal_lig.box_dim
+    box_center, box_dim = xtal_lig.box_center, xtal_lig.box_dim
     build_grids(gpf_name, uniques, receptor_type_lst, box_center, box_dim, recp)
 
 
