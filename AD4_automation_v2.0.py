@@ -50,16 +50,9 @@ class Ligand(object):
         self.box_dim = (self.x_length, self.y_length, self.z_length)
         self.box_center = (self.x_centroid, self.y_centroid, self.z_centroid)
 
-
-
-
-class Receptor(object):
-    def __index__(self, atom_types):
-        self.atom_types = atom_types
-
 targ_name = sys.argv[1]
 xtal_lig  = Ligand(sys.argv[2])
-recp      = Receptor(sys.argv[3])
+recp      = sys.argv[3]
 gpf_name  = "recp_"+targ_name+".gpf"
 
 def build_lig_file_list():
