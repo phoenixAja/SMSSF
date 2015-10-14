@@ -1,8 +1,19 @@
+__author__ = 'plogan'
+
+
 #!/usr/bin/python
-#Author: Phoenix Logan
 
-#usage: script.py  xtal_lig  recp
+'''
+Description: script automates preparation of AutoDock4 docking
+runs. It first prepares an AutoGrid4 input file and runs AutoGrid
+to generate interaction maps for the target. It also makes a list
+of all ligand atoms types and creates independent AutoDock4
+configuration files for each ligand-target docking.
 
+usage: script.py  targ_name   path_to_xtal_lig   path_to_recp
+
+./AD4_automation_v1.11.py adrb1 ./shared-adrb1/crystal_ligand.mol2 ./shared-adrb1/recp_adrb1.pdbqt
+'''
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -11,26 +22,55 @@ import os
 from pandas import DataFrame
 import glob
 
+class Ligand(object):
+    def __init__(self, xtal_name):
+        self.xtal_name = xtal_name
+        self.mol2 = Chem.MolFromMol2File(self, sanitize = False )
+        self.conf1 = self.mol2.GetConformer
+        self.centroid = Chem.rdMolTransforms.ComputeCentroid(self.conf1)
+        self.x_centroid = centroid.x
+        self.y_centroid = centroid.y
+        self.z_centroid = centroid.z
+        self.atom_coord_x = []
+        self.atom_coord_y = []
+        self.atom_coord_z = []
+        for atom in self.mol2.GetAtoms():
+            atom_index = atom.GetIdx()
+            pos = conf1.GetAtomPosition(atom_index)
+            self.atom_coord_x.append(pos.x)
+            self.atom_coord_y.append(pos.y)
+            self.atom_coord_z.append(pos.z)
+        '''compute box center coordinates (vector) and box edge
+       lengths (vector). Use crystal ligand's centroid and
+       pad min max coords in each dimension for box dimensions'''
+        padding = 4
+        self.x_length = ( max(self.atom_coord_x) + padding) - (min(self.atom_coord_x) - padding )
+        self.y_length = ( max(self.atom_coord_y) + padding) - (min(self.atom_coord_y) - padding )
+        self.z_length = ( max(self.atom_coord_z) + padding) - (min(self.atom_coord_z) - padding )
+        self.box_dim = (self.x_length, self.y_length, self.z_length)
+        self.box_center = (self.x_centroid, self.y_centroid, self.z_centroid)
+
+targ_name = sys.argv[1]
+xtal_lig  = Ligand(sys.argv[2])
+recp      = sys.argv[3]
+gpf_name  = "recp_"+targ_name+".gpf"
+
 def build_lig_file_list():
+    '''get mol2 and pdbqt lists of the ligand files'''
     pdbqt_file_list = glob.glob("*.pdbqt")
-    #pdbqt_file_list.extend(glob.glob("*0001/ZINC*.pdbqt"))
     mol2_file_list = glob.glob("*.mol2")
-    #mol2_file_list.extend(glob.glob("*0001/ZINC*.mol2"))
     return pdbqt_file_list, mol2_file_list
+
 
 def extract_atom_types( ligand_file_list ):
     ''' extract the unique atom types for AD4 gpf file'''
-    # list all of the pdbqt files to find unique atom types
     file_lines = []
-    # open each file
     for i in ligand_file_list:
         j = open(i,"r")
         for line in j:
-            # split each line by its space
             k = line.split(" ")
             sorted_k = []
             for l in k:
-                # remove empty list elements
                 if len(l) > 0:
                     sorted_k.append(l)
             file_lines.append(sorted_k)
@@ -51,49 +91,18 @@ def extract_atom_types( ligand_file_list ):
             pass
     return new_types
 
-def dock_box( molfile ):
-    # compute center coordinates (vector) and box edge lengths (vector)
-    # read in the crystal ligand and extract the centroid 
-    # for finding the correct box dimensions
-    m = Chem.MolFromMol2File( molfile, sanitize = False )
 
-    # center coords
-    conf1 = m.GetConformer()
-    centroid = Chem.rdMolTransforms.ComputeCentroid(conf1)
-    x_center = centroid.x
-    y_center = centroid.y
-    z_center = centroid.z
-
-    # get molecules coords
-    atom_coord_x = []
-    atom_coord_y = []
-    atom_coord_z = []
-    for atom in m.GetAtoms():
-        atom_index = atom.GetIdx()
-        pos = conf1.GetAtomPosition(atom_index)
-        atom_coord_x.append(pos.x)
-        atom_coord_y.append(pos.y)
-        atom_coord_z.append(pos.z)
-    # calc box dimensions basd on min/max of xyz and pad with 5 angstroms
-    padding = 4
-    x_length = (max(atom_coord_x) + padding) - (min(atom_coord_x) - padding)
-    y_length = (max(atom_coord_y) + padding) - (min(atom_coord_y) - padding)
-    z_length = (max(atom_coord_z) + padding) - (min(atom_coord_z) - padding)
-
-    box_center = (x_center, y_center, z_center)
-    box_dim = (x_length, y_length, z_length)
-    return box_center, box_dim
-
-def add_uniques( gpf, atm_types_lst, receptor_type_lst, box_center, box_dim, recp ):
-    # this function will add the unique elements to the gpf file
-    # to create new grid maps
-    os.chdir("shared")
+def build_grids( gpf, atm_types_lst, receptor_type_lst, box_center, box_dim, recp ):
+    '''this function will add the unique elements to the gpf file
+       and then run AutoGrid to get the grid maps'''
+    recp_file = os.path.basename(recp)
+    os.chdir("shared-"+targ_name)
     lig_str_types = ""
     recp_str_types = ""
     map_types = ""
     for i in atm_types_lst:
         lig_str_types += i+" "
-        j = "map receptor."+i+".map                   # atom-specific affinity map\n"
+        j = "map recp_"+targ_name+"."+i+".map                   # atom-specific affinity map\n"
         map_types += j
     for i in receptor_type_lst:
         recp_str_types += i+" "
@@ -106,29 +115,35 @@ def add_uniques( gpf, atm_types_lst, receptor_type_lst, box_center, box_dim, rec
     with open(gpf, "w") as fh:
         fh.write(
     "npts  "+x_len+" "+y_len+" " +z_len+" # num.grid points in xyz\n"
-    "gridfld receptor.maps.fld            # grid_data_file\n"
+    "gridfld recp_"+targ_name+".maps.fld            # grid_data_file\n"
     "spacing 0.375                        # spacing(A)\n"
     "receptor_types "+recp_str_types+"    # receptor atom types\n"
     "ligand_types "  +lig_str_types+"     # ligand atom types\n"
-    "receptor "      + recp +  "          # macromolecule\n"
+    "receptor "      + recp_file +  "          # macromolecule\n"
     "gridcenter "+' '.join([str(x) for x in box_center])+" # xyz-coordinates or auto\n"
     "smooth 0.5                           # store minimum energy w/in rad(A)\n"
     +map_types+
-    "elecmap receptor.e.map               # electrostatic potential map\n"
-    "dsolvmap receptor.d.map              # desolvation potential map\n"
+    "elecmap recp_"+targ_name+".e.map               # electrostatic potential map\n"
+    "dsolvmap recp_"+targ_name+".d.map              # desolvation potential map\n"
     "dielectric -0.1465                   # <0, AD4 distance-dep.diel;>0, cons\n"
     )
-    
-    os.system("autogrid4 -p "+gpf+" -l recep.glg")
+
+    os.system("autogrid4 -p "+gpf+" -l recp_"+targ_name+".glg")
 
 
+def get_tors_num( pdbqt_lig ):
+    '''read through pdbqt and find number of torsions'''
+    with open( pdbqt_lig, 'r') as fh:
+        data = fh.readlines()
+    for line in data:
+        if line.split()[2] == 'active':
+            return str(line.split()[1])
 
-def AutoDock4(mol_lig, pdbqt_lig, u_lst):
+
+def write_AD4_config(mol_lig, pdbqt_lig, u_lst):
     ''' This function will write out Autodock4 docking parameter file (dpf) '''
     try:
-        num_tor_file = open(pdbqt_lig, "r")
-        num_tors_lst = num_tor_file.readlines()[0].split(" ")
-        num_tors = str(num_tors_lst[2])
+        num_tors = get_tors_num( pdbqt_lig )
     except IndexError:
         print "BAD PDBQT"
 
@@ -137,18 +152,17 @@ def AutoDock4(mol_lig, pdbqt_lig, u_lst):
     str_maps = ""
     for i in u_lst:
        str_types += i+" "
-       j = "map receptor."+i+".map                   # atom-specific affinity map \n"
+       j = "map recp_"+targ_name+"."+i+".map                   # atom-specific affinity map \n"
        str_maps += j
-    # try except statements to keep program running through 'lemon' molecules
     try:
-        m = Chem.MolFromMol2File( "../"+mol_lig, sanitize = False)
-        conf1 = m.GetConformer()
-        centroid = Chem.rdMolTransforms.ComputeCentroid(conf1)
-        x_center = float(str(centroid.x)[:4])
-        y_center = float(str(centroid.y)[:4])
-        z_center = float(str(centroid.z)[:4])
+        # get centroid for ligand you want to dock, should be present as mol2 file
+        Lig = Ligand(mol_lig)
+        x_center = float(str(Lig.x_centroid)[:4])
+        y_center = float(str(Lig.y_centroid)[:4])
+        z_center = float(str(Lig.z_centroid)[:4])
 
-        config_file = open(pdbqt_lig[:len(pdbqt_lig)-6]+"_config.dpf","w")
+
+        config_file = open(pdbqt_lig[:len(pdbqt_lig)-6]+"_config_"+targ_name+".dpf","w")
         config_file.write(
         "autodock_parameter_version 4.2       # used by autodock to validate parameter set \n"
 
@@ -156,12 +170,12 @@ def AutoDock4(mol_lig, pdbqt_lig, u_lst):
         "intelec                              # calculate internal electrostatics \n"
         "seed pid time                       # seeds for random generator \n"
         "ligand_types "+str_types+"             # atoms types in ligand \n"
-        "fld receptor.maps.fld                # grid_data_file \n"
-        
+        "fld recp_"+targ_name+".maps.fld                # grid_data_file \n"
+
         +str_maps+
 
-        "elecmap receptor.e.map               # electrostatics map \n"
-        "desolvmap receptor.d.map             # desolvation map \n"
+        "elecmap recp_"+targ_name+".e.map               # electrostatics map \n"
+        "desolvmap recp_"+targ_name+".d.map             # desolvation map \n"
         "move "+pdbqt_lig+" # small molecule \n"
         "about "+str(x_center)+" "+str(y_center)+" "+str(z_center)+" # small molecule center \n"
         "tran0 random                         # initial coordinates/A or random \n"
@@ -180,7 +194,7 @@ def AutoDock4(mol_lig, pdbqt_lig, u_lst):
         "ga_window_size 10                    # \n"
         "ga_cauchy_alpha 0.0                  # Alpha parameter of Cauchy distribution \n"
         "ga_cauchy_beta 1.0                   # Beta parameter Cauchy distribution \n"
-        "set_ga                               # set the above parameters for GA or LGA \n" 
+        "set_ga                               # set the above parameters for GA or LGA \n"
         "sw_max_its 300                       # iterations of Solis & Wets local search \n"
         "sw_max_succ 4                        # consecutive successes before changing rho \n"
         "sw_max_fail 4                        # consecutive failures before changing rho \n"
@@ -198,44 +212,41 @@ def AutoDock4(mol_lig, pdbqt_lig, u_lst):
         pass
 
 
-def config_sort(total_uniques, xtal_lig):
-    dir_list = glob.glob("dec*")
-    dir_list.extend(glob.glob("act*"))
-    for i in dir_list:
-        if os.path.isdir(i):
-            os.chdir(i)
+def batch_write_configs(total_uniques):
+    '''loop through lig dirs and generate AD4 configuration files'''
+    dir_list = glob.glob( targ_name+"-*" )
+    for ligdir in dir_list:
+        if os.path.isdir(ligdir):
+            os.chdir(ligdir)
             pdbqt_lst, mol2_lst = build_lig_file_list()
-            for pdbqt_lig in pdbqt_lst:
-                AutoDock4( xtal_lig, pdbqt_lig, total_uniques )
+            for i in range(0,len(pdbqt_lst)):
+                write_AD4_config( mol2_lst[i], pdbqt_lst[i], total_uniques )
             os.chdir("..")
 
 
-def absolute_uniques(gpf_name, box_center, box_dim):
-    dir_list = glob.glob("dec*")
-    dir_list.extend(glob.glob("act*"))
+def absolute_uniques():
+    '''get list of unique atoms over the set of ligands'''
+    dir_list = glob.glob( targ_name+"-*" )
     total_uniques = []
-    for i in dir_list:
-        if os.path.isdir(i):
-            os.chdir(i)
+    for ligdir in dir_list:
+        if os.path.isdir(ligdir):
+            os.chdir(ligdir)
             pdbqt_lst, mol2_lst = build_lig_file_list()
             uniq_atoms = extract_atom_types( pdbqt_lst )
-            for i in uniq_atoms:
-                total_uniques.append(i)
+            for atm in uniq_atoms:
+                total_uniques.append(atm)
             os.chdir("..")
     new_types = list(set(total_uniques))
     return new_types
 
-def main():
-    xtal_lig = sys.argv[1]
-    recp     = sys.argv[2]
 
-    box_center, box_dim = dock_box(xtal_lig)
-    gpf_name = "test.gpf"
-    uniques = absolute_uniques(gpf_name, box_center, box_dim)
-    config_sort(uniques, xtal_lig)
+def main():
+    uniques = absolute_uniques()
+    batch_write_configs(uniques)
     receptor_type_lst = extract_atom_types([recp])
-    add_uniques(gpf_name, uniques, receptor_type_lst, box_center, box_dim, recp)
-    
+    box_center, box_dim = xtal_lig.box_center, xtal_lig.box_dim
+    build_grids(gpf_name, uniques, receptor_type_lst, box_center, box_dim, recp)
+
 
 if __name__ == '__main__':
     main()

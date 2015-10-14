@@ -1,2 +1,2 @@
-# SMSSF
-Small Molecule Screening and Synthesis Facility Scripts
+# SMSF
+Small Molecule Screening Facility Scripts
