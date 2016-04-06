@@ -7,20 +7,24 @@ import pandas as pd
 from pandas import DataFrame
 
 def read_mmol2(fh):
+    ''' Use pandas to read in mmol2 file and split into a dataframe for
+    future parsing'''
     mmol2 = pd.read_table(fh, names = ["col1"])
     mmol2_2 = DataFrame(mmol2)
     return mmol2_2
     
 def get_index(identifier, dframe):
-    #break apart mmol2 file by molecule, atom, and bond to parse accordingly
+    '''break apart mmol2 file by molecule, atom, and bond to parse accordingly
+    make sure we are not removing duplicate atoms'''
+    #create list of atoms for each molecule after @<TRIPOS>
     atom_list = dframe[dframe["col1"] == "@<TRIPOS>"+identifier].index.tolist()
     if identifier == "MOLECULE":
         atom_list.append(len(dframe.index))
     return atom_list  
 
 def create_chunks(molecule_list, bond_list, atom_list): 
-    #takes the appropriate chunks from mmol2 file (to 
-    #be parsed and then to be sent to file   
+    '''takes the appropriate chunks from mmol2 file (to 
+    be parsed and then to be sent to file '''   
     sections = []
     w_sections = []
     for i in range(len(atom_list)):
@@ -33,24 +37,26 @@ def create_chunks(molecule_list, bond_list, atom_list):
     return sections, w_sections
 
 def create_dict(section, dframe):
-    #create a dictionary with separated dataframe entries
+    '''create a dictionary with separated dataframe entries to store each individual molecule'''
     mmol2_dict = {}
     for i in range(len(section)):
+        #splice dataframe to get out each molecule
         df_edit = dframe.loc[range(section[i][0], section[i][1])]
         mmol2_dict[i] = df_edit
     return mmol2_dict    
 
 def split(mmol2_dict): 
-    #splits into columns by white space delimeters  
+    ''' splits into columns by white space delimeters using REGEX ''' 
     for i in mmol2_dict.keys():
         j = mmol2_dict.get(i)["col1"].str.split('\s+')
         mmol2_dict[i] = j
     return mmol2_dict
         
 def find_flats(mmol2_dict, mmol2_whole): 
-    #finds the flats, outputs them to new file and extracts them from the mmol2 file
+    ''' finds the flats, outputs them to new file and extracts them from the mmol2 file '''
     for i in mmol2_dict.keys():
         val = mmol2_dict[i]
+        # store z coordinates to determine which molecules have a zero summation"
         z_coords = []
         for k in val:
             z_num = float(k[5])
